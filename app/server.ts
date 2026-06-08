@@ -4,17 +4,17 @@ import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  app.get('/health', (_req, res) => {
+    res.json({ ok: true });
+  });
 
   // Wait to initialize AI until actually needed to avoid crashes if ENV is missing
   let deepseekClient: OpenAI | null = null;
@@ -127,9 +127,9 @@ Respond in markdown format. Keep the tone friendly and helpful. Please ALWAYS re
     app.use(vite.middlewares);
   }
 
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  const PORT = Number(process.env.PORT) || 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on http://0.0.0.0:${PORT}`);
   });
 }
 
