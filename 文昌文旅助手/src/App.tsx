@@ -170,7 +170,7 @@ export default function App() {
           {/* Header Image Background */}
           <div className="absolute top-0 left-0 right-0 h-[190px] pointer-events-none select-none z-0">
             <img 
-              src="/bg.jpg" 
+              src={`${import.meta.env.BASE_URL}bg.jpg`}
               alt="Background" 
               className="w-full h-full object-cover object-top"
             />
@@ -206,7 +206,7 @@ export default function App() {
             <div className="z-10 relative shrink-0">
               <div className="w-24 h-32 md:w-28 md:h-40 flex flex-col items-center justify-end relative">
                 <img 
-                  src="/航小昌.png" 
+                  src={`${import.meta.env.BASE_URL}航小昌.png`}
                   alt="航小昌IP" 
                   className="w-full h-full object-contain filter drop-shadow-lg"
                 />
