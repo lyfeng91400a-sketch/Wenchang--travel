@@ -1,43 +1,20 @@
-# 文昌文旅助手 (Wenchang Tourism Assistant)
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-海南文昌文旅 AI 旅游助手原型，提供景点推荐、美食打卡、行程规划等智能问答服务。
+# Run and deploy your AI Studio app
 
-## 在线预览
+This contains everything you need to run your app locally.
 
-| 版本 | 地址 | 说明 |
-|------|------|------|
-| 静态原型 | https://lyfeng91400a-sketch.github.io/Wenchang--travel/ | 仅 UI + 预设问答 |
-| 完整 AI 版 | Render 部署后的 `.onrender.com` 地址 | 支持自由 AI 对话 |
+View your app in AI Studio: https://ai.studio/apps/1fcbb059-9ffc-4eec-8ef1-153289d18cf6
 
-## Render 部署（完整 AI 对话）
+## Run Locally
 
-1. 在 [Render Dashboard](https://dashboard.render.com) 连接 GitHub 仓库 `Wenchang--travel`
-2. 选择 **New Web Service**，Render 会自动读取根目录的 `render.yaml`
-3. 在 **Environment** 中添加 API Key（二选一）：
-   - `DEEPSEEK_API_KEY` — 推荐，https://platform.deepseek.com
-   - `GEMINI_API_KEY` — https://aistudio.google.com/apikey
-4. 点击 **Deploy**，等待构建完成即可获得公网地址
+**Prerequisites:**  Node.js
 
-**手动配置（如未自动识别）：**
 
-| 配置项 | 值 |
-|--------|-----|
-| Root Directory | `app` |
-| Build Command | `npm install && npm run build` |
-| Start Command | `npm start` |
-| Runtime | Node |
-
-## 本地运行
-
-```bash
-cd app
-npm install
-# 配置 .env.local 中的 DEEPSEEK_API_KEY 或 GEMINI_API_KEY
-npm run dev
-```
-
-## 技术栈
-
-- React 19 + Vite 6 + Tailwind CSS 4
-- Express 后端（AI 对话 API）
-- DeepSeek / Gemini 大模型
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
