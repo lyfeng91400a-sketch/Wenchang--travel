@@ -22,7 +22,7 @@
 
 | 配置项 | 值 |
 |--------|-----|
-| Root Directory | `文昌文旅助手` |
+| Root Directory | `app` |
 | Build Command | `npm install && npm run build` |
 | Start Command | `npm start` |
 | Runtime | Node |
@@ -30,7 +30,7 @@
 ## 本地运行
 
 ```bash
-cd 文昌文旅助手
+cd app
 npm install
 # 配置 .env.local 中的 DEEPSEEK_API_KEY 或 GEMINI_API_KEY
 npm run dev

@@ -2,7 +2,7 @@ services:
   - type: web
     name: wenchang-travel
     runtime: node
-    rootDir: 文昌文旅助手
+    rootDir: app
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:

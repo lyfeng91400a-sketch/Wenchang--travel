@@ -24,19 +24,19 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: 文昌文旅助手/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
-        working-directory: 文昌文旅助手
+        working-directory: app
         run: npm ci
 
       - name: Build static site
-        working-directory: 文昌文旅助手
+        working-directory: app
         run: GITHUB_PAGES=true npx vite build
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: 文昌文旅助手/dist
+          path: app/dist
 
   deploy:
     needs: build
