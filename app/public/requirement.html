@@ -77,7 +77,20 @@
             .demo-web-container { height: 80vh; }
         }
         .view-hidden { display: none !important; }
+        .pdf-hide { /* 保留给 PDF 导出时隐藏 */ }
+        #pdf-export-root {
+            position: fixed;
+            left: -9999px;
+            top: 0;
+            width: 794px;
+            background: white;
+            z-index: -1;
+        }
+        @media print {
+            #top-bar, #view-prototype, #download-pdf-btn, .screen-only { display: none !important; }
+        }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body class="antialiased min-h-screen flex flex-col">
 
@@ -87,10 +100,16 @@
             <span class="text-xl">📄</span>
             <span>需求确认与讨论阶段</span>
         </div>
-        <button id="toggle-btn" type="button"
-            class="bg-blue-600 hover:bg-blue-500 text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-lg transition-colors font-medium flex-shrink-0">
-            切换至：应用原型演示 👉
-        </button>
+        <div class="flex items-center gap-2">
+            <button id="download-pdf-btn" type="button"
+                class="bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-lg transition-colors font-medium flex-shrink-0">
+                一键下载 PDF
+            </button>
+            <button id="toggle-btn" type="button"
+                class="bg-blue-600 hover:bg-blue-500 text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-lg transition-colors font-medium flex-shrink-0">
+                切换至：应用原型演示 👉
+            </button>
+        </div>
     </header>
 
     <!-- 需求确认页 -->
@@ -204,7 +223,7 @@
                         — D E M O 演 示 （Web 版） —
                     </p>
                     
-                    <div class="flex justify-center">
+                    <div class="flex justify-center screen-only">
                         <div class="demo-web-container">
                             <div class="demo-web-header">
                                 <div class="demo-web-controls">
@@ -215,7 +234,25 @@
                             <iframe id="inline-demo-iframe" class="demo-iframe" loading="lazy" src="about:blank" data-src="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" title="航小昌文旅助手演示"></iframe>
                         </div>
                     </div>
-                    <p class="text-center mt-4 text-sm text-slate-500">
+                    <!-- PDF 版 Demo：静态截图 + 可点击链接 -->
+                    <div id="pdf-demo-static" class="hidden pdf-only-demo">
+                        <div class="flex justify-center">
+                            <div class="demo-web-container" style="height:auto;">
+                                <div class="demo-web-header">
+                                    <div class="demo-web-controls"><span></span><span></span><span></span></div>
+                                    <div class="demo-web-title">航小昌智能导览 - Demo演示（静态预览）</div>
+                                </div>
+                                <a href="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" class="pdf-demo-link block">
+                                    <img src="demo-screenshot.png" alt="问答页面演示截图" class="w-full block">
+                                </a>
+                            </div>
+                        </div>
+                        <p class="text-center mt-4 text-sm text-slate-600">
+                            点击上图或下方链接，访问在线交互演示：<br>
+                            <a href="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" class="text-sky-600 underline break-all">https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/</a>
+                        </p>
+                    </div>
+                    <p class="text-center mt-4 text-sm text-slate-500 screen-only">
                         若 Demo 无法加载（503），说明演示服务正在冷启动，请
                         <a href="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" target="_blank" rel="noopener noreferrer" class="text-sky-600 underline font-medium">点击新窗口打开</a>
                         或等待 30 秒后
@@ -230,6 +267,9 @@
             Powered by DeepSeek & Hainan Wenchang Culture
         </div>
     </div>
+
+    <!-- PDF 导出专用容器 -->
+    <div id="pdf-export-root"></div>
 
     <!-- 原型交互演示页（全屏 iframe） -->
     <div id="view-prototype" class="view-hidden flex-1 flex flex-col bg-gray-900 min-h-0 relative">
@@ -308,6 +348,88 @@
         } else if (inlineIframe) {
             inlineIframe.src = inlineIframe.dataset.src;
         }
+
+        // 一键下载 PDF
+        const PDF_FILENAME = '海南文昌文旅智能助手-需求确认书.pdf';
+
+        function collectLinkRects(container) {
+            const rootRect = container.getBoundingClientRect();
+            return [...container.querySelectorAll('a[href]')].map(a => {
+                const r = a.getBoundingClientRect();
+                return {
+                    url: a.href,
+                    x: r.left - rootRect.left,
+                    y: r.top - rootRect.top,
+                    w: r.width,
+                    h: r.height
+                };
+            }).filter(l => l.w > 0 && l.h > 0);
+        }
+
+        function addLinksToPdf(pdf, linkData, containerWidth, marginMm) {
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const innerWidth = pageWidth - marginMm * 2;
+            const scale = innerWidth / containerWidth;
+
+            linkData.forEach(link => {
+                const x = marginMm + link.x * scale;
+                const y = marginMm + link.y * scale;
+                const w = link.w * scale;
+                const h = link.h * scale;
+                const page = Math.min(Math.max(Math.floor(y / pageHeight) + 1, 1), pdf.internal.getNumberOfPages());
+                const yOnPage = y - (page - 1) * pageHeight;
+                pdf.setPage(page);
+                pdf.link(x, yOnPage, w, h, { url: link.url });
+            });
+        }
+
+        async function downloadPDF() {
+            const btn = document.getElementById('download-pdf-btn');
+            const exportRoot = document.getElementById('pdf-export-root');
+            const source = document.querySelector('#view-requirement .glass-card');
+            if (!source || !exportRoot) return;
+
+            btn.disabled = true;
+            const origText = btn.textContent;
+            btn.textContent = '正在生成 PDF...';
+
+            try {
+                exportRoot.innerHTML = source.innerHTML;
+                exportRoot.querySelectorAll('.screen-only').forEach(el => el.remove());
+                const pdfDemo = exportRoot.querySelector('#pdf-demo-static');
+                if (pdfDemo) {
+                    pdfDemo.classList.remove('hidden');
+                }
+                exportRoot.querySelectorAll('iframe, button').forEach(el => el.remove());
+
+                await new Promise(r => setTimeout(r, 300));
+
+                const linkData = collectLinkRects(exportRoot);
+                const marginMm = 10;
+                const opt = {
+                    margin: marginMm,
+                    filename: PDF_FILENAME,
+                    image: { type: 'jpeg', quality: 0.95 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false, width: 794 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: ['css', 'legacy'] }
+                };
+
+                const pdf = await html2pdf().set(opt).from(exportRoot).toPdf().get('pdf');
+                addLinksToPdf(pdf, linkData, 794, marginMm);
+                pdf.save(PDF_FILENAME);
+            } catch (err) {
+                console.error(err);
+                alert('PDF 生成失败，请稍后重试。');
+            } finally {
+                exportRoot.innerHTML = '';
+                btn.disabled = false;
+                btn.textContent = origText;
+            }
+        }
+
+        document.getElementById('download-pdf-btn').addEventListener('click', downloadPDF);
     </script>
 </body>
 </html>
