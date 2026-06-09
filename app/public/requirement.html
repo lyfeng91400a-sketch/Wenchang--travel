@@ -120,7 +120,6 @@
         <div class="max-w-4xl mx-auto glass-card shadow-xl rounded-sm overflow-hidden">
             
             <div class="hero-pattern p-12 lg:p-16 text-center text-white relative flex flex-col items-center justify-center">
-                <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
                 <h1 class="text-4xl sm:text-5xl font-bold mb-6 tracking-[0.2em] relative z-10 leading-snug">
                     关于海南文昌文旅智能助手项目<br class="sm:hidden">应用需求确认书
                 </h1>
@@ -179,7 +178,7 @@
                             <h3 class="text-xl font-bold text-slate-900 mb-4 tracking-wide">（一）IP 形象与命名方案</h3>
                             <div class="flex flex-col sm:flex-row items-center sm:items-start gap-6 border-b border-sky-100 pb-6 mb-6">
                                 <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full overflow-hidden border-4 border-sky-200 shrink-0 bg-white shadow-sm">
-                                    <img src="航小昌.png" alt="推荐IP形象" class="w-full h-full object-cover">
+                                    <img src="航小昌.png" alt="推荐IP形象" crossorigin="anonymous" class="w-full h-full object-cover">
                                 </div>
                                 <div class="flex-1 text-slate-700 leading-relaxed text-justify mt-4 sm:mt-0">
                                     <p class="mb-3">为赋予智能助手更生动的人格特化，目前设计了初步的视觉形象（如左侧图示），并提供以下体现"文昌+航天"主题特色的 IP 命名备选方案供定夺：</p>
@@ -246,7 +245,7 @@
                                     <div class="demo-web-title">航小昌智能导览 - Demo演示（静态预览）</div>
                                 </div>
                                 <a href="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" class="pdf-demo-link block">
-                                    <img src="demo-screenshot.png" alt="问答页面演示截图" class="w-full block">
+                                    <img src="demo-screenshot.png" alt="问答页面演示截图" crossorigin="anonymous" class="w-full block">
                                 </a>
                             </div>
                         </div>
@@ -396,6 +395,48 @@
             });
         }
 
+        function stripExternalBackgrounds(root) {
+            root.querySelectorAll('*').forEach(el => {
+                const bg = getComputedStyle(el).backgroundImage;
+                if (bg && bg !== 'none' && (bg.includes('http://') || bg.includes('https://'))) {
+                    if (!bg.includes(window.location.origin)) {
+                        el.style.backgroundImage = 'none';
+                    }
+                }
+            });
+        }
+
+        async function inlineImages(container) {
+            const backups = [];
+            for (const img of container.querySelectorAll('img')) {
+                if (!img.src || img.src.startsWith('data:')) continue;
+                backups.push({ img, src: img.src });
+                try {
+                    await new Promise((resolve, reject) => {
+                        const temp = new Image();
+                        temp.crossOrigin = 'anonymous';
+                        temp.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = temp.naturalWidth;
+                            canvas.height = temp.naturalHeight;
+                            canvas.getContext('2d').drawImage(temp, 0, 0);
+                            img.src = canvas.toDataURL('image/jpeg', 0.92);
+                            resolve();
+                        };
+                        temp.onerror = reject;
+                        temp.src = img.src + (img.src.includes('?') ? '&' : '?') + '_pdf=' + Date.now();
+                    });
+                } catch (e) {
+                    console.warn('图片内联失败，保留原图:', img.src, e);
+                }
+            }
+            return backups;
+        }
+
+        function restoreImages(backups) {
+            backups.forEach(({ img, src }) => { img.src = src; });
+        }
+
         async function downloadPDF() {
             const btn = document.getElementById('download-pdf-btn');
             const overlay = document.getElementById('pdf-generating-overlay');
@@ -407,6 +448,7 @@
             const screenOnlyEls = [...source.querySelectorAll('.screen-only')];
             const pdfDemo = source.querySelector('#pdf-demo-static');
             const hiddenEls = [];
+            let imageBackups = [];
 
             btn.disabled = true;
             const origText = btn.textContent;
@@ -425,9 +467,11 @@
                     hiddenEls.push(el);
                 });
                 if (powered) powered.style.display = 'none';
+                stripExternalBackgrounds(source);
 
                 await waitForImages(source);
-                await new Promise(r => setTimeout(r, 400));
+                imageBackups = await inlineImages(source);
+                await new Promise(r => setTimeout(r, 300));
 
                 const linkData = collectLinkRects(source);
                 const marginMm = 10;
@@ -435,27 +479,41 @@
                 const opt = {
                     margin: marginMm,
                     filename: PDF_FILENAME,
-                    image: { type: 'jpeg', quality: 0.95 },
+                    image: { type: 'jpeg', quality: 0.92 },
                     html2canvas: {
                         scale: 2,
                         useCORS: true,
                         allowTaint: false,
                         logging: false,
                         scrollX: 0,
-                        scrollY: 0,
-                        windowWidth: document.documentElement.scrollWidth
+                        scrollY: -window.scrollY,
+                        backgroundColor: '#ffffff',
+                        onclone: (clonedDoc) => {
+                            const cloned = clonedDoc.querySelector('.glass-card') || clonedDoc.body;
+                            stripExternalBackgrounds(cloned);
+                            cloned.querySelectorAll('iframe, button, .screen-only').forEach(el => el.remove());
+                            const demo = cloned.querySelector('#pdf-demo-static');
+                            if (demo) demo.classList.remove('hidden');
+                        }
                     },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                     pagebreak: { mode: ['css', 'legacy'] }
                 };
 
-                const pdf = await html2pdf().set(opt).from(source).toPdf().get('pdf');
+                const worker = html2pdf().set(opt).from(source).toPdf();
+                const pdf = await worker.get('pdf');
+
+                if (!pdf || pdf.internal.getNumberOfPages() < 1) {
+                    throw new Error('PDF 页数为 0');
+                }
+
                 addLinksToPdf(pdf, linkData, containerWidth, marginMm);
                 pdf.save(PDF_FILENAME);
             } catch (err) {
-                console.error(err);
-                alert('PDF 生成失败，请稍后重试。');
+                console.error('PDF 生成错误:', err);
+                alert('PDF 生成失败：' + (err.message || '未知错误') + '。请刷新页面后重试。');
             } finally {
+                restoreImages(imageBackups);
                 if (topBar) topBar.style.display = '';
                 hiddenEls.forEach(el => { el.style.display = ''; });
                 if (pdfDemo) pdfDemo.classList.add('hidden');
