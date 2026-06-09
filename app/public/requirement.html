@@ -210,9 +210,15 @@
                                 </div>
                                 <div class="demo-web-title">航小昌智能导览 - Demo演示</div>
                             </div>
-                            <iframe class="demo-iframe" src="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" title="航小昌文旅助手演示"></iframe>
+                            <iframe id="inline-demo-iframe" class="demo-iframe" loading="lazy" src="about:blank" data-src="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" title="航小昌文旅助手演示"></iframe>
                         </div>
                     </div>
+                    <p class="text-center mt-4 text-sm text-slate-500">
+                        若 Demo 无法加载（503），说明演示服务正在冷启动，请
+                        <a href="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" target="_blank" rel="noopener noreferrer" class="text-sky-600 underline font-medium">点击新窗口打开</a>
+                        或等待 30 秒后
+                        <button type="button" onclick="document.getElementById('inline-demo-iframe').src = document.getElementById('inline-demo-iframe').dataset.src + '?t=' + Date.now()" class="text-sky-600 underline font-medium">重新加载</button>
+                    </p>
                 </section>
 
             </div>
@@ -224,10 +230,18 @@
     </div>
 
     <!-- 原型交互演示页（全屏 iframe） -->
-    <div id="view-prototype" class="view-hidden flex-1 flex flex-col bg-gray-900 min-h-0">
+    <div id="view-prototype" class="view-hidden flex-1 flex flex-col bg-gray-900 min-h-0 relative">
         <iframe id="full-demo-iframe" class="full-demo-iframe flex-1"
-            src="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/"
+            src="about:blank"
             title="航小昌文旅助手全屏演示"></iframe>
+        <div id="prototype-hint" class="absolute bottom-0 left-0 right-0 bg-slate-800/95 text-white px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm border-t border-slate-700">
+            <span class="text-slate-300 text-center sm:text-left">演示服务长时间未访问时会自动休眠，首次打开可能需要约 30 秒启动。若页面显示 503，请稍等后重新加载或新窗口打开。</span>
+            <div class="flex gap-2 shrink-0">
+                <button type="button" onclick="reloadDemo()" class="bg-slate-600 hover:bg-slate-500 px-4 py-1.5 rounded-lg transition-colors">重新加载</button>
+                <a href="https://wenchang-travel-267871-7-1441387161.sh.run.tcloudbase.com/" target="_blank" rel="noopener noreferrer"
+                   class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg transition-colors">新窗口打开</a>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -239,6 +253,14 @@
         const viewRequirement = document.getElementById('view-requirement');
         const viewPrototype = document.getElementById('view-prototype');
         const fullDemoIframe = document.getElementById('full-demo-iframe');
+
+        function loadDemoIframe() {
+            fullDemoIframe.src = DEMO_URL + '?t=' + Date.now();
+        }
+
+        function reloadDemo() {
+            loadDemoIframe();
+        }
 
         function switchToRequirement() {
             currentView = 'requirement';
@@ -257,9 +279,7 @@
             barTitle.innerHTML = '<span class="text-xl">✨</span><span>交互原型演示区</span>';
             toggleBtn.textContent = '👈 返回需求确认书';
             toggleBtn.className = 'bg-slate-700 hover:bg-slate-600 border border-slate-600 text-xs sm:text-sm px-3 sm:px-4 py-1.5 rounded-lg transition-colors font-medium flex-shrink-0';
-            if (!fullDemoIframe.src || fullDemoIframe.src === 'about:blank') {
-                fullDemoIframe.src = DEMO_URL;
-            }
+            loadDemoIframe();
             document.body.style.overflow = 'hidden';
         }
 
@@ -270,6 +290,22 @@
                 switchToRequirement();
             }
         });
+
+        // 页面滚动到 Demo 区域时再加载内嵌 iframe，避免冷启动浪费
+        const inlineIframe = document.getElementById('inline-demo-iframe');
+        if (inlineIframe && 'IntersectionObserver' in window) {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && inlineIframe.src === 'about:blank') {
+                        inlineIframe.src = inlineIframe.dataset.src + '?t=' + Date.now();
+                        observer.disconnect();
+                    }
+                });
+            }, { rootMargin: '100px' });
+            observer.observe(inlineIframe);
+        } else if (inlineIframe) {
+            inlineIframe.src = inlineIframe.dataset.src;
+        }
     </script>
 </body>
 </html>
