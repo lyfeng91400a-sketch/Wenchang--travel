@@ -92,7 +92,11 @@
             color: #334155;
         }
         #pdf-generating-overlay.active { display: flex; }
+        /* PDF 分页辅助 */
+        .pdf-section { break-inside: avoid; page-break-inside: avoid; }
+        .html2pdf__page-break { page-break-before: always; break-before: page; height: 0; }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body class="antialiased min-h-screen flex flex-col">
@@ -130,7 +134,7 @@
 
             <div class="p-8 sm:p-14 lg:p-20 space-y-16">
 
-                <section>
+                <section class="pdf-section">
                     <div class="flex items-center mb-6">
                         <span class="text-2xl accent-main mr-4 font-bold">01_</span>
                         <h2 class="text-2xl font-bold text-slate-800 tracking-wider">需求描述</h2>
@@ -140,7 +144,8 @@
                     </p>
                 </section>
 
-                <section>
+                <div class="html2pdf__page-break"></div>
+                <section class="pdf-section">
                     <div class="flex items-center mb-8">
                         <span class="text-2xl accent-main mr-4 font-bold">02_</span>
                         <h2 class="text-2xl font-bold text-slate-800 tracking-wider">功能模块规划</h2>
@@ -168,7 +173,8 @@
                     </div>
                 </section>
 
-                <section>
+                <div class="html2pdf__page-break"></div>
+                <section class="pdf-section">
                     <div class="flex items-center mb-6">
                         <span class="text-2xl accent-main mr-4 font-bold">03_</span>
                         <h2 class="text-2xl font-bold text-slate-800 tracking-wider">界面交互与 IP 形象构建</h2>
@@ -201,7 +207,8 @@
                     </div>
                 </section>
 
-                <section>
+                <div class="html2pdf__page-break"></div>
+                <section class="pdf-section">
                     <div class="flex items-center mb-6">
                         <span class="text-2xl accent-main mr-4 font-bold">04_</span>
                         <h2 class="text-2xl font-bold text-slate-800 tracking-wider">原型系统效果演示</h2>
@@ -377,22 +384,67 @@
             }));
         }
 
-        function addLinksToPdf(pdf, linkData, containerWidth, marginMm) {
+        function addLinksToPdf(pdf, linkData, containerWidth, marginMm, contentHeightMm) {
             const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
             const innerWidth = pageWidth - marginMm * 2;
-            const scale = innerWidth / containerWidth;
+            const pxScale = innerWidth / containerWidth;
 
             linkData.forEach(link => {
-                const x = marginMm + link.x * scale;
-                const y = marginMm + link.y * scale;
-                const w = link.w * scale;
-                const h = link.h * scale;
-                const page = Math.min(Math.max(Math.floor(y / pageHeight) + 1, 1), pdf.internal.getNumberOfPages());
-                const yOnPage = y - (page - 1) * pageHeight;
+                const scaledY = link.y * pxScale;
+                const page = Math.min(
+                    Math.max(Math.floor(scaledY / contentHeightMm) + 1, 1),
+                    pdf.internal.getNumberOfPages()
+                );
+                const x = marginMm + link.x * pxScale;
+                const yOnPage = marginMm + (scaledY - (page - 1) * contentHeightMm);
+                const w = link.w * pxScale;
+                const h = link.h * pxScale;
                 pdf.setPage(page);
                 pdf.link(x, yOnPage, w, h, { url: link.url });
             });
+        }
+
+        /** 将 canvas 切片追加到已有 PDF（每章节从新页开始） */
+        function appendCanvasToPdf(pdf, canvas, marginMm, startOnNewPage) {
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const contentWidth = pageWidth - marginMm * 2;
+            const contentHeight = pageHeight - marginMm * 2;
+            const scale = contentWidth / canvas.width;
+            const sliceHeightPx = contentHeight / scale;
+            let offsetY = 0;
+            let sliceIndex = 0;
+
+            if (startOnNewPage && pdf.internal.getNumberOfPages() > 0) {
+                pdf.addPage();
+            }
+
+            while (offsetY < canvas.height) {
+                if (sliceIndex > 0) pdf.addPage();
+                const currentSlicePx = Math.min(sliceHeightPx, canvas.height - offsetY);
+                const sliceCanvas = document.createElement('canvas');
+                sliceCanvas.width = canvas.width;
+                sliceCanvas.height = currentSlicePx;
+                sliceCanvas.getContext('2d').drawImage(
+                    canvas, 0, offsetY, canvas.width, currentSlicePx,
+                    0, 0, canvas.width, currentSlicePx
+                );
+                pdf.addImage(
+                    sliceCanvas.toDataURL('image/jpeg', 0.92),
+                    'JPEG', marginMm, marginMm, contentWidth, currentSlicePx * scale
+                );
+                offsetY += currentSlicePx;
+                sliceIndex++;
+            }
+            return contentHeight;
+        }
+
+        async function captureBlock(block, canvasOpts) {
+            return html2pdf()
+                .set({ html2canvas: canvasOpts })
+                .from(block)
+                .toCanvas()
+                .get('canvas');
         }
 
         function stripExternalBackgrounds(root) {
@@ -457,6 +509,8 @@
 
             const scrollY = window.scrollY;
             window.scrollTo(0, 0);
+            const origWidth = source.style.width;
+            const origMaxWidth = source.style.maxWidth;
 
             try {
                 if (topBar) topBar.style.display = 'none';
@@ -468,6 +522,8 @@
                 });
                 if (powered) powered.style.display = 'none';
                 stripExternalBackgrounds(source);
+                source.style.width = '794px';
+                source.style.maxWidth = '794px';
 
                 await waitForImages(source);
                 imageBackups = await inlineImages(source);
@@ -475,40 +531,46 @@
 
                 const linkData = collectLinkRects(source);
                 const marginMm = 10;
-                const containerWidth = source.offsetWidth || 896;
-                const opt = {
-                    margin: marginMm,
-                    filename: PDF_FILENAME,
-                    image: { type: 'jpeg', quality: 0.92 },
-                    html2canvas: {
-                        scale: 2,
-                        useCORS: true,
-                        allowTaint: false,
-                        logging: false,
-                        scrollX: 0,
-                        scrollY: -window.scrollY,
-                        backgroundColor: '#ffffff',
-                        onclone: (clonedDoc) => {
-                            const cloned = clonedDoc.querySelector('.glass-card') || clonedDoc.body;
-                            stripExternalBackgrounds(cloned);
-                            cloned.querySelectorAll('iframe, button, .screen-only').forEach(el => el.remove());
-                            const demo = cloned.querySelector('#pdf-demo-static');
-                            if (demo) demo.classList.remove('hidden');
-                        }
-                    },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                    pagebreak: { mode: ['css', 'legacy'] }
+                const containerWidth = source.offsetWidth || 794;
+                const canvasOpts = {
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: false,
+                    scrollX: 0,
+                    scrollY: 0,
+                    width: 794,
+                    windowWidth: 794,
+                    backgroundColor: '#ffffff',
+                    onclone: (clonedDoc, el) => {
+                        stripExternalBackgrounds(el);
+                        el.querySelectorAll('iframe, button, .screen-only, .html2pdf__page-break').forEach(n => n.remove());
+                        const demo = el.querySelector('#pdf-demo-static');
+                        if (demo) demo.classList.remove('hidden');
+                        el.style.width = '794px';
+                        el.style.maxWidth = '794px';
+                    }
                 };
 
-                const worker = html2pdf().set(opt).from(source).toPdf();
-                const pdf = await worker.get('pdf');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+                const blocks = [
+                    source.querySelector('.hero-pattern'),
+                    ...source.querySelectorAll('.pdf-section')
+                ].filter(Boolean);
+
+                let contentHeight = pdf.internal.pageSize.getHeight() - marginMm * 2;
+                for (let i = 0; i < blocks.length; i++) {
+                    const canvas = await captureBlock(blocks[i], canvasOpts);
+                    contentHeight = appendCanvasToPdf(pdf, canvas, marginMm, i > 0);
+                }
 
                 if (!pdf || pdf.internal.getNumberOfPages() < 1) {
                     throw new Error('PDF 页数为 0');
                 }
 
                 try {
-                    addLinksToPdf(pdf, linkData, containerWidth, marginMm);
+                    addLinksToPdf(pdf, linkData, containerWidth, marginMm, contentHeight);
                 } catch (linkErr) {
                     console.warn('超链接标注失败，PDF 正文不受影响:', linkErr);
                 }
@@ -517,6 +579,8 @@
                 console.error('PDF 生成错误:', err);
                 alert('PDF 生成失败：' + (err.message || '未知错误') + '。请刷新页面后重试。');
             } finally {
+                source.style.width = origWidth;
+                source.style.maxWidth = origMaxWidth;
                 restoreImages(imageBackups);
                 if (topBar) topBar.style.display = '';
                 hiddenEls.forEach(el => { el.style.display = ''; });
