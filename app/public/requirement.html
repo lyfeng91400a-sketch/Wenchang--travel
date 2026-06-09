@@ -77,18 +77,21 @@
             .demo-web-container { height: 80vh; }
         }
         .view-hidden { display: none !important; }
-        .pdf-hide { /* 保留给 PDF 导出时隐藏 */ }
-        #pdf-export-root {
-            position: fixed;
-            left: -9999px;
-            top: 0;
-            width: 794px;
-            background: white;
-            z-index: -1;
-        }
         @media print {
             #top-bar, #view-prototype, #download-pdf-btn, .screen-only { display: none !important; }
         }
+        #pdf-generating-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.92);
+            z-index: 99999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #334155;
+        }
+        #pdf-generating-overlay.active { display: flex; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
@@ -268,8 +271,8 @@
         </div>
     </div>
 
-    <!-- PDF 导出专用容器 -->
-    <div id="pdf-export-root"></div>
+    <!-- PDF 生成遮罩 -->
+    <div id="pdf-generating-overlay">正在生成 PDF，请稍候...</div>
 
     <!-- 原型交互演示页（全屏 iframe） -->
     <div id="view-prototype" class="view-hidden flex-1 flex flex-col bg-gray-900 min-h-0 relative">
@@ -353,17 +356,26 @@
         const PDF_FILENAME = '海南文昌文旅智能助手-需求确认书.pdf';
 
         function collectLinkRects(container) {
-            const rootRect = container.getBoundingClientRect();
             return [...container.querySelectorAll('a[href]')].map(a => {
-                const r = a.getBoundingClientRect();
-                return {
-                    url: a.href,
-                    x: r.left - rootRect.left,
-                    y: r.top - rootRect.top,
-                    w: r.width,
-                    h: r.height
-                };
+                let el = a;
+                let x = 0, y = 0;
+                while (el && el !== container) {
+                    x += el.offsetLeft;
+                    y += el.offsetTop;
+                    el = el.offsetParent;
+                }
+                return { url: a.href, x, y, w: a.offsetWidth, h: a.offsetHeight };
             }).filter(l => l.w > 0 && l.h > 0);
+        }
+
+        function waitForImages(container) {
+            return Promise.all([...container.querySelectorAll('img')].map(img => {
+                if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                return new Promise(resolve => {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                });
+            }));
         }
 
         function addLinksToPdf(pdf, linkData, containerWidth, marginMm) {
@@ -386,44 +398,70 @@
 
         async function downloadPDF() {
             const btn = document.getElementById('download-pdf-btn');
-            const exportRoot = document.getElementById('pdf-export-root');
+            const overlay = document.getElementById('pdf-generating-overlay');
             const source = document.querySelector('#view-requirement .glass-card');
-            if (!source || !exportRoot) return;
+            const topBar = document.getElementById('top-bar');
+            const powered = document.querySelector('#view-requirement > .text-center.mt-12');
+            if (!source) return;
+
+            const screenOnlyEls = [...source.querySelectorAll('.screen-only')];
+            const pdfDemo = source.querySelector('#pdf-demo-static');
+            const hiddenEls = [];
 
             btn.disabled = true;
             const origText = btn.textContent;
             btn.textContent = '正在生成 PDF...';
+            overlay.classList.add('active');
+
+            const scrollY = window.scrollY;
+            window.scrollTo(0, 0);
 
             try {
-                exportRoot.innerHTML = source.innerHTML;
-                exportRoot.querySelectorAll('.screen-only').forEach(el => el.remove());
-                const pdfDemo = exportRoot.querySelector('#pdf-demo-static');
-                if (pdfDemo) {
-                    pdfDemo.classList.remove('hidden');
-                }
-                exportRoot.querySelectorAll('iframe, button').forEach(el => el.remove());
+                if (topBar) topBar.style.display = 'none';
+                screenOnlyEls.forEach(el => { el.style.display = 'none'; hiddenEls.push(el); });
+                if (pdfDemo) pdfDemo.classList.remove('hidden');
+                source.querySelectorAll('iframe, button').forEach(el => {
+                    el.style.display = 'none';
+                    hiddenEls.push(el);
+                });
+                if (powered) powered.style.display = 'none';
 
-                await new Promise(r => setTimeout(r, 300));
+                await waitForImages(source);
+                await new Promise(r => setTimeout(r, 400));
 
-                const linkData = collectLinkRects(exportRoot);
+                const linkData = collectLinkRects(source);
                 const marginMm = 10;
+                const containerWidth = source.offsetWidth || 896;
                 const opt = {
                     margin: marginMm,
                     filename: PDF_FILENAME,
                     image: { type: 'jpeg', quality: 0.95 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, width: 794 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        allowTaint: false,
+                        logging: false,
+                        scrollX: 0,
+                        scrollY: 0,
+                        windowWidth: document.documentElement.scrollWidth
+                    },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                     pagebreak: { mode: ['css', 'legacy'] }
                 };
 
-                const pdf = await html2pdf().set(opt).from(exportRoot).toPdf().get('pdf');
-                addLinksToPdf(pdf, linkData, 794, marginMm);
+                const pdf = await html2pdf().set(opt).from(source).toPdf().get('pdf');
+                addLinksToPdf(pdf, linkData, containerWidth, marginMm);
                 pdf.save(PDF_FILENAME);
             } catch (err) {
                 console.error(err);
                 alert('PDF 生成失败，请稍后重试。');
             } finally {
-                exportRoot.innerHTML = '';
+                if (topBar) topBar.style.display = '';
+                hiddenEls.forEach(el => { el.style.display = ''; });
+                if (pdfDemo) pdfDemo.classList.add('hidden');
+                if (powered) powered.style.display = '';
+                overlay.classList.remove('active');
+                window.scrollTo(0, scrollY);
                 btn.disabled = false;
                 btn.textContent = origText;
             }
