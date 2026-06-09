@@ -507,7 +507,11 @@
                     throw new Error('PDF 页数为 0');
                 }
 
-                addLinksToPdf(pdf, linkData, containerWidth, marginMm);
+                try {
+                    addLinksToPdf(pdf, linkData, containerWidth, marginMm);
+                } catch (linkErr) {
+                    console.warn('超链接标注失败，PDF 正文不受影响:', linkErr);
+                }
                 pdf.save(PDF_FILENAME);
             } catch (err) {
                 console.error('PDF 生成错误:', err);
